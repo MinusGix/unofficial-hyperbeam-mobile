@@ -5,6 +5,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -73,6 +76,25 @@ jobs:
             app/build/outputs/apk/release/*.apk
             app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      # Every push to the default branch becomes a GitHub release, so the APK can be
+      # downloaded straight to a phone. The newest is always at
+      # releases/latest/download/hyperbeam.apk.
+      - name: Publish release
+        if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="build-${{ github.run_number }}"
+          mkdir -p dist
+          cp app/build/outputs/apk/release/*.apk dist/hyperbeam.apk
+          cp app/build/outputs/apk/debug/*.apk dist/hyperbeam-debug.apk
+          notes="Build ${HB_VERSION_NAME} from ${GITHUB_SHA::7}: $(git log -1 --format=%s)
+
+          - hyperbeam.apk: the app
+          - hyperbeam-debug.apk: separate debug app (installs side by side) with WebView remote debugging on"
+          gh release create "$tag" dist/hyperbeam.apk dist/hyperbeam-debug.apk \
+            --target "$GITHUB_SHA" --title "Hyperbeam ${HB_VERSION_NAME}" --notes "$notes" --latest
 
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest
