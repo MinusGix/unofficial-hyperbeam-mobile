@@ -18,7 +18,6 @@ import androidx.lifecycle.lifecycleScope
 import dev.minusgix.hyperbeam.HyperbeamApp
 import dev.minusgix.hyperbeam.R
 import dev.minusgix.hyperbeam.ui.MainActivity
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /**
@@ -35,7 +34,7 @@ class RoomService : LifecycleService() {
         super.onCreate()
         startInForeground(RoomSession.state.value)
         lifecycleScope.launch {
-            RoomSession.state.distinctUntilChanged().collect { st ->
+            RoomSession.state.collect { st ->
                 updateNotification(st)
                 holdLocks(st.inRoom)
             }
