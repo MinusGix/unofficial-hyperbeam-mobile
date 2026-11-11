@@ -1,0 +1,26 @@
+<resources>
+    <string name="app_name">Hyperbeam</string>
+    <string name="channel_room">Active room</string>
+    <string name="channel_room_desc">Keeps your room running while the app is in the background</string>
+    <string name="notif_in_room">In a room</string>
+    <string name="notif_connecting">Connecting…</string>
+    <string name="notif_reconnecting">Reconnecting…</string>
+    <string name="notif_connected">Connected</string>
+    <string name="notif_browsing">Browsing Hyperbeam</string>
+    <string name="action_open">Open</string>
+    <string name="action_exit">Exit</string>
+    <string name="action_mute">Mute</string>
+    <string name="action_unmute">Unmute</string>
+    <string name="kb_toggle">Type into the shared browser</string>
+    <string name="kb_compose_hint">Type, then send to the shared browser</string>
+    <string name="kb_send">Send</string>
+    <string name="menu_title">Menu</string>
+    <string name="menu_reload">Reload page</string>
+    <string name="menu_snapshot">Share debug snapshot</string>
+    <string name="menu_keyboard_mode_smart">Keyboard: smart (autocorrect)</string>
+    <string name="menu_keyboard_mode_direct">Keyboard: direct (no suggestions)</string>
+    <string name="menu_battery">Allow running in background</string>
+    <string name="menu_exit">Leave and exit</string>
+    <string name="snapshot_failed">Couldn\'t capture a snapshot</string>
+    <string name="paste_empty">Clipboard is empty</string>
+</resources>

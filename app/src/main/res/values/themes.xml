@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Hyperbeam" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/hb_accent</item>
+        <item name="colorAccent">@color/hb_accent</item>
+        <item name="android:windowBackground">@color/hb_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

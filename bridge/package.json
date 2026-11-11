@@ -1,0 +1,20 @@
+{
+  "name": "hyperbeam-bridge",
+  "version": "1.0.0",
+  "description": "Injected bridge between the native shell and the Hyperbeam site",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p .",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@hyperbeam/web": "^0.0.39",
+    "esbuild": "^0.25.5",
+    "playwright": "^1.63.0",
+    "typescript": "^5.8.3"
+  },
+  "private": true
+}

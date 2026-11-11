@@ -1,0 +1,8 @@
+<resources>
+    <color name="hb_bg">#0E0E12</color>
+    <color name="hb_surface">#1B1B22</color>
+    <color name="hb_surface_on">#2C2C38</color>
+    <color name="hb_text">#ECECF1</color>
+    <color name="hb_text_dim">#9A9AA8</color>
+    <color name="hb_accent">#7C5CFF</color>
+</resources>
