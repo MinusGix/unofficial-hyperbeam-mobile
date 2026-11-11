@@ -11,8 +11,6 @@ import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebSettings
 import android.webkit.WebView
-import androidx.webkit.WebSettingsCompat
-import androidx.webkit.WebViewFeature
 import dev.minusgix.hyperbeam.BuildConfig
 import dev.minusgix.hyperbeam.web.BridgeChannel
 import dev.minusgix.hyperbeam.web.BridgeEvent
@@ -110,12 +108,8 @@ object RoomSession {
             useWideViewPort = true
             allowFileAccess = false
             allowContentAccess = false
+            // Sign-in providers refuse embedded WebViews by their user agent.
             userAgentString = browserUserAgent(userAgentString)
-        }
-        // Don't advertise ourselves as an embedded WebView: sign-in providers
-        // refuse WebViews outright. See browserUserAgent().
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
-            WebSettingsCompat.setRequestedWithHeaderOriginAllowList(wv.settings, emptySet())
         }
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
