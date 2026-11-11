@@ -43,7 +43,9 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          # 21: emoji-aware grapheme breaking in java.text.BreakIterator (JDK 20+),
+          # matching Android's ICU-backed implementation that the app runs on.
+          java-version: 21
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Core tests

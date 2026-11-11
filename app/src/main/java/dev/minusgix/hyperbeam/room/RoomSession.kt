@@ -150,8 +150,8 @@ object RoomSession {
         webView = null
         bridge = null
         (wv.parent as? ViewGroup)?.removeView(wv)
-        wv.stopLoading()
-        wv.loadUrl("about:blank")
+        // The renderer may already be gone (crash); destroy() is the only safe call then.
+        runCatching { wv.stopLoading() }
         wv.destroy()
         contextWrapper = null
         _state.value = RoomState()

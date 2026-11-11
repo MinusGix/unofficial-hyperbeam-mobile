@@ -14,7 +14,9 @@ import java.text.BreakIterator
  * where the keyboard thinks it is.
  *
  * Counts are in user-perceived characters (grapheme clusters), which is what a
- * single Backspace or arrow press moves over in a browser text field.
+ * single Backspace or arrow press moves over in a browser text field. Emoji
+ * sequences need Unicode extended grapheme rules: Android's BreakIterator
+ * (ICU) and JDK 20+ have them; older desktop JDKs split emoji too finely.
  */
 class TextSync {
     sealed interface Edit {
