@@ -11,10 +11,22 @@
         android:orientation="vertical">
 
         <FrameLayout
-            android:id="@+id/web_container"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_weight="1">
+
+            <FrameLayout
+                android:id="@+id/web_container"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <!-- Mouse mode: fingers on the shared screen become mouse input. -->
+            <dev.minusgix.hyperbeam.ui.PointerOverlay
+                android:id="@+id/pointer_overlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+        </FrameLayout>
 
         <!-- Shown while typing into the shared browser. -->
         <LinearLayout
@@ -217,6 +229,27 @@
             android:background="@drawable/fab_bg"
             android:contentDescription="@string/menu_title"
             android:src="@drawable/ic_more" />
+
+        <ImageButton
+            android:id="@+id/fab_fullscreen"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="8dp"
+            android:alpha="0.75"
+            android:background="@drawable/fab_bg"
+            android:contentDescription="@string/fullscreen_toggle"
+            android:src="@drawable/ic_fullscreen" />
+
+        <ImageButton
+            android:id="@+id/fab_mouse"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginBottom="8dp"
+            android:alpha="0.85"
+            android:background="@drawable/fab_bg"
+            android:contentDescription="@string/mouse_toggle"
+            android:src="@drawable/ic_mouse" />
 
         <ImageButton
             android:id="@+id/fab_keyboard"

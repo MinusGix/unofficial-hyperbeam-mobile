@@ -17,6 +17,8 @@ sealed interface BridgeEvent {
     data class ChatMessage(val author: String, val text: String, val time: String)
     data class Chat(val initial: Boolean, val messages: List<ChatMessage>) : BridgeEvent
     data class ChatSent(val id: Int, val ok: Boolean) : BridgeEvent
+    /** Where the shared browser's picture sits on the page, in CSS px; [viewportWidth] is window.innerWidth. */
+    data class VideoRect(val x: Float, val y: Float, val w: Float, val h: Float, val dpr: Float, val viewportWidth: Float) : BridgeEvent
     data class Unknown(val type: String) : BridgeEvent
 
     companion object {
@@ -44,6 +46,11 @@ sealed interface BridgeEvent {
                     Chat(o.optBoolean("initial"), msgs)
                 }
                 "chatSent" -> ChatSent(o.optInt("id"), o.optBoolean("ok"))
+                "videoRect" -> VideoRect(
+                    o.optDouble("x", 0.0).toFloat(), o.optDouble("y", 0.0).toFloat(),
+                    o.optDouble("w", 0.0).toFloat(), o.optDouble("h", 0.0).toFloat(),
+                    o.optDouble("dpr", 1.0).toFloat(), o.optDouble("vw", 0.0).toFloat(),
+                )
                 else -> Unknown(type)
             }
         }

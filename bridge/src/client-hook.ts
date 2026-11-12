@@ -21,6 +21,8 @@ type ClientModuleResult = {
 
 type Client = {
   handleMessage: (m: HbMessage) => void;
+  /** The shadow root the client renders into (holds the <video>). */
+  root?: ShadowRoot;
   width?: number;
   height?: number;
   userId?: string;
@@ -31,6 +33,11 @@ const listeners: Array<(m: HbMessage) => void> = [];
 
 export function getClient(): Client | null {
   return current;
+}
+
+/** The <video> showing the shared browser, if a client is running. */
+export function getVideo(): HTMLVideoElement | null {
+  return current?.root?.querySelector("video") ?? null;
 }
 
 /** Observe every message the streaming client reports back to the page. */
@@ -120,7 +127,8 @@ export function wrapClient(
   }
   const adopt = (r: ClientModuleResult): ClientModuleResult => {
     if (!r || typeof r.handleMessage !== "function") return r;
-    const client: Client = { handleMessage: r.handleMessage };
+    const root = args[0] instanceof ShadowRoot ? args[0] : undefined;
+    const client: Client = { handleMessage: r.handleMessage, root };
     current = client;
     send({ type: "client", state: "hooked" });
     const origDestroy = r.destroy;

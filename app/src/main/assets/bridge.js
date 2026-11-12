@@ -146,6 +146,10 @@
   function getClient() {
     return current;
   }
+  function getVideo() {
+    var _a;
+    return ((_a = current == null ? void 0 : current.root) == null ? void 0 : _a.querySelector("video")) ?? null;
+  }
   var SESSION_HOST = /^[a-z0-9]{25}\.hyperbeam\.com$/;
   var JS_TYPE = /javascript|ecmascript/i;
   function isHyperbeamHost(host) {
@@ -214,7 +218,8 @@
     }
     const adopt = (r) => {
       if (!r || typeof r.handleMessage !== "function") return r;
-      const client = { handleMessage: r.handleMessage };
+      const root = args[0] instanceof ShadowRoot ? args[0] : void 0;
+      const client = { handleMessage: r.handleMessage, root };
       current = client;
       send({ type: "client", state: "hooked" });
       const origDestroy = r.destroy;
@@ -560,8 +565,92 @@ export default function (...a) { return globalThis.__hbBridgeWrap(m.default, a);
     return { sockets: sockets.slice(), frames: frames.slice(), http: http.slice() };
   }
 
+  // src/pointer.ts
+  var clamp = (v) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
+  function sendMouse(action, x, y, button = 0) {
+    const c = getClient();
+    if (!c) return false;
+    c.handleMessage({ type: `mouse${action}`, x: clamp(x), y: clamp(y), button });
+    return true;
+  }
+  function sendWheel(x, y, deltaX, deltaY) {
+    const c = getClient();
+    if (!c) return false;
+    c.handleMessage({ type: "mousemove", x: clamp(x), y: clamp(y) });
+    c.handleMessage({ type: "wheel", deltaX, deltaY });
+    return true;
+  }
+  var lastRect = "";
+  function reportRect() {
+    const v = getVideo();
+    let msg = { x: 0, y: 0, w: 0, h: 0 };
+    if (v && v.isConnected) {
+      const r = v.getBoundingClientRect();
+      msg = { x: r.left, y: r.top, w: r.width, h: r.height };
+      const vw = v.videoWidth;
+      const vh = v.videoHeight;
+      if (vw > 0 && vh > 0 && r.width > 0 && r.height > 0) {
+        const scale = Math.min(r.width / vw, r.height / vh);
+        const w = vw * scale;
+        const h = vh * scale;
+        msg = { x: r.left + (r.width - w) / 2, y: r.top + (r.height - h) / 2, w, h };
+      }
+    }
+    const key = `${msg.x.toFixed(1)},${msg.y.toFixed(1)},${msg.w.toFixed(1)},${msg.h.toFixed(1)},${devicePixelRatio},${innerWidth}`;
+    if (key === lastRect) return;
+    lastRect = key;
+    send({ type: "videoRect", ...msg, dpr: devicePixelRatio, vw: innerWidth });
+  }
+  function installVideoTracking() {
+    window.setInterval(reportRect, 400);
+    window.addEventListener("resize", reportRect);
+    window.addEventListener("scroll", reportRect, true);
+  }
+  var PAGE_CSS = `
+#embed, [data-hb-theater] {
+  position: fixed !important; inset: 0 !important; z-index: 2147483646 !important;
+  width: 100vw !important; height: 100vh !important; max-width: none !important;
+  margin: 0 !important; background: #000 !important;
+}
+html, body { overflow: hidden !important; }
+`;
+  var SHADOW_CSS = `
+video {
+  width: auto !important; height: auto !important;
+  max-width: 100% !important; max-height: 100% !important;
+}
+`;
+  var pageStyle = null;
+  var shadowStyle = null;
+  function setTheater(on) {
+    var _a;
+    const c = getClient();
+    const host = (_a = c == null ? void 0 : c.root) == null ? void 0 : _a.host;
+    if (on) {
+      if (host) host.setAttribute("data-hb-theater", "");
+      if (!pageStyle) {
+        pageStyle = document.createElement("style");
+        pageStyle.textContent = PAGE_CSS;
+        document.head.appendChild(pageStyle);
+      }
+      if ((c == null ? void 0 : c.root) && !shadowStyle) {
+        shadowStyle = document.createElement("style");
+        shadowStyle.textContent = SHADOW_CSS;
+        c.root.appendChild(shadowStyle);
+      }
+    } else {
+      host == null ? void 0 : host.removeAttribute("data-hb-theater");
+      pageStyle == null ? void 0 : pageStyle.remove();
+      shadowStyle == null ? void 0 : shadowStyle.remove();
+      pageStyle = null;
+      shadowStyle = null;
+    }
+    lastRect = "";
+    requestAnimationFrame(reportRect);
+  }
+
   // src/protocol.ts
-  var BRIDGE_VERSION = 2;
+  var BRIDGE_VERSION = 3;
 
   // src/visibility.ts
   var pinned = true;
@@ -693,6 +782,15 @@ export default function (...a) { return globalThis.__hbBridgeWrap(m.default, a);
       case "chatSend":
         send({ type: "chatSent", id: cmd.id, ok: sendChat(cmd.text) });
         break;
+      case "mouse":
+        sendMouse(cmd.action, cmd.x, cmd.y, cmd.button ?? 0);
+        break;
+      case "wheel":
+        sendWheel(cmd.x, cmd.y, cmd.deltaX, cmd.deltaY);
+        break;
+      case "theater":
+        setTheater(cmd.on);
+        break;
       case "snapshot":
         send({ type: "snapshot", id: cmd.id, data: takeSnapshot() });
         break;
@@ -710,6 +808,7 @@ export default function (...a) { return globalThis.__hbBridgeWrap(m.default, a);
     if (top) {
       installLocationTracking();
       installChatReader();
+      installVideoTracking();
     }
     onCommand(handle);
     send({ type: "ready", version: BRIDGE_VERSION, top, url: location.href });

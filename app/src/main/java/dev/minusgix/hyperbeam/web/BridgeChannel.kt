@@ -93,6 +93,24 @@ class BridgeChannel(
         put("text", text)
     }
 
+    /** Mouse [action] ("down", "move", "up") at x, y normalised 0..1 over the shared screen. */
+    fun mouse(action: String, x: Float, y: Float, button: Int = 0) = command("mouse") {
+        put("action", action)
+        put("x", x.toDouble())
+        put("y", y.toDouble())
+        put("button", button)
+    }
+
+    /** Scroll by deltaX/deltaY remote pixels with the pointer at x, y (0..1). */
+    fun wheel(x: Float, y: Float, deltaX: Float, deltaY: Float) = command("wheel") {
+        put("x", x.toDouble())
+        put("y", y.toDouble())
+        put("deltaX", deltaX.toDouble())
+        put("deltaY", deltaY.toDouble())
+    }
+
+    fun theater(on: Boolean) = command("theater") { put("on", on) }
+
     fun requestSnapshot(id: Int) = command("snapshot") { put("id", id) }
 
     companion object {

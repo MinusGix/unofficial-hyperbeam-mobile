@@ -7,6 +7,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -35,11 +36,13 @@ import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import dev.minusgix.hyperbeam.R
+import dev.minusgix.hyperbeam.core.PointerGestures
 import dev.minusgix.hyperbeam.core.RoomLink
 import dev.minusgix.hyperbeam.room.RecentRooms
 import dev.minusgix.hyperbeam.input.Mods
@@ -61,6 +64,12 @@ class MainActivity : AppCompatActivity(), PageHost {
     private lateinit var composeInput: EditText
     private lateinit var fabs: View
     private lateinit var fabKeyboard: ImageButton
+    private lateinit var fabMouse: ImageButton
+    private lateinit var fabFullscreen: ImageButton
+    private lateinit var pointerOverlay: PointerOverlay
+
+    private var mouseMode = false
+    private var theater = false
 
     private enum class KbMode { OFF, TYPING, COMPOSE }
 
@@ -103,6 +112,9 @@ class MainActivity : AppCompatActivity(), PageHost {
         composeInput = findViewById(R.id.compose_input)
         fabs = findViewById(R.id.fabs)
         fabKeyboard = findViewById(R.id.fab_keyboard)
+        fabMouse = findViewById(R.id.fab_mouse)
+        fabFullscreen = findViewById(R.id.fab_fullscreen)
+        pointerOverlay = findViewById(R.id.pointer_overlay)
 
         ContextCompat.registerReceiver(
             this, finishReceiver, IntentFilter(RoomService.ACTION_FINISH_UI), ContextCompat.RECEIVER_NOT_EXPORTED,
@@ -112,6 +124,12 @@ class MainActivity : AppCompatActivity(), PageHost {
         setupKeyboardBar()
         fabKeyboard.setOnClickListener { setKbMode(if (kbMode == KbMode.OFF) KbMode.TYPING else KbMode.OFF) }
         findViewById<ImageButton>(R.id.fab_menu).setOnClickListener { showMenu(it) }
+        fabMouse.setOnClickListener { setMouseMode(!mouseMode, announce = true) }
+        fabFullscreen.setOnClickListener { setTheater(!theater) }
+        setMouseMode(prefs.getBoolean(PREF_MOUSE, false), announce = false)
+        webContainer.addOnLayoutChangeListener { _, l, t, r, b, oldL, oldT, oldR, oldB ->
+            if (r - l != oldR - oldL || b - t != oldB - oldT) updatePointerArea()
+        }
 
         setupStartPanel()
         RoomSession.host = this
@@ -132,6 +150,7 @@ class MainActivity : AppCompatActivity(), PageHost {
                 val wv = RoomSession.webView
                 when {
                     startPanel.visibility == View.VISIBLE -> finish()
+                    theater -> setTheater(false)
                     kbMode != KbMode.OFF -> setKbMode(KbMode.OFF)
                     wv != null && wv.canGoBack() -> wv.goBack()
                     // Keep the room running; the notification brings you back.
@@ -143,6 +162,7 @@ class MainActivity : AppCompatActivity(), PageHost {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { RoomSession.events.collect(::onBridgeEvent) }
+                launch { RoomSession.state.collect { updatePointerArea() } }
                 launch {
                     RoomSession.viewVersion.collect { if (RoomSession.isOpen) attachWebView() }
                 }
@@ -360,8 +380,57 @@ class MainActivity : AppCompatActivity(), PageHost {
                 fabs.visibility = View.VISIBLE
             }
             is BridgeEvent.Snapshot -> shareSnapshot(ev)
+            // A new page (or a freshly hooked client) has lost the fullscreen styling.
+            is BridgeEvent.Ready, is BridgeEvent.Client -> if (theater) RoomSession.bridge?.theater(true)
             else -> {}
         }
+    }
+
+    // --- Mouse mode and fullscreen ----------------------------------------
+
+    private fun setMouseMode(on: Boolean, announce: Boolean) {
+        mouseMode = on
+        prefs.edit().putBoolean(PREF_MOUSE, on).apply()
+        fabMouse.isActivated = on
+        pointerOverlay.visibility = if (on) View.VISIBLE else View.GONE
+        updatePointerArea()
+        if (announce && on) {
+            val msg = if (RoomSession.state.value.video != null) R.string.mouse_on else R.string.mouse_no_video
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Map the shared screen's picture from page (CSS) pixels onto the overlay. */
+    private fun updatePointerArea() {
+        val st = RoomSession.state.value
+        val v = st.video
+        val wv = RoomSession.webView
+        if (v == null || wv == null || wv.width == 0) {
+            pointerOverlay.setArea(PointerGestures.Area(0f, 0f, 0f, 0f))
+            return
+        }
+        val s = if (v.viewportWidth > 0f) wv.width / v.viewportWidth else v.dpr
+        pointerOverlay.setArea(
+            PointerGestures.Area(v.x * s, v.y * s, v.w * s, v.h * s, st.remoteWidth, st.remoteHeight),
+        )
+    }
+
+    /** Fullscreen: the shared screen fills a landscape display with the system bars tucked away. */
+    private fun setTheater(on: Boolean) {
+        if (on == theater) return
+        theater = on
+        RoomSession.bridge?.theater(on)
+        requestedOrientation =
+            if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        val bars = WindowCompat.getInsetsController(window, window.decorView)
+        if (on) {
+            bars.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            bars.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            bars.show(WindowInsetsCompat.Type.systemBars())
+        }
+        fabFullscreen.setImageResource(if (on) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen)
+        fabFullscreen.isActivated = on
     }
 
     // --- Start screen ----------------------------------------------------
@@ -438,6 +507,7 @@ class MainActivity : AppCompatActivity(), PageHost {
     /** Close the current page and go back to the start screen. */
     private fun leaveToStart() {
         setKbMode(KbMode.OFF)
+        setTheater(false)
         RoomSession.close()
         startService(Intent(this, RoomService::class.java).setAction(RoomService.ACTION_LEAVE))
         roomInput.text.clear()
@@ -573,6 +643,7 @@ class MainActivity : AppCompatActivity(), PageHost {
     companion object {
         private const val PREF_SMART_KEYBOARD = "smart_keyboard"
         private const val PREF_SERVER = "server"
+        private const val PREF_MOUSE = "mouse_mode"
         private val URL_RE = Regex("""https?://\S+""")
     }
 }

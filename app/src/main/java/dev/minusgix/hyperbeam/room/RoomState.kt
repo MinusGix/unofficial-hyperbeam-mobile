@@ -18,6 +18,8 @@ data class RoomState(
     val lastDisconnect: String? = null,
     /** Most recent chat messages in this room, oldest first. */
     val chat: List<ChatLine> = emptyList(),
+    /** Where the shared screen's picture sits on the page, if it's showing. */
+    val video: dev.minusgix.hyperbeam.web.BridgeEvent.VideoRect? = null,
 ) {
     /** In a room: the shared browser is running, or the page is a room with chat. */
     val inRoom: Boolean get() = clientActive || roomName != null

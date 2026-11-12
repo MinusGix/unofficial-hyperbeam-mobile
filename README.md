@@ -8,6 +8,13 @@ It runs the real Hyperbeam site and fixes the parts that are rough on a phone:
   all reach the shared browser. An extra-keys row adds Esc, Tab, Ctrl, Alt,
   Shift, arrows, Home/End and paste, and a compose box lets you write a full
   line before sending it. Hardware keyboards pass through with modifiers.
+- **Mouse mode.** On a phone the site sends touches to the shared browser as
+  touch events, so dragging scrolls instead of selecting. The mouse button
+  switches the shared screen to mouse input: tap to click, double tap to select
+  a word, drag to select text or drag things, hold to right click, and use two
+  fingers to scroll. Touches outside the shared screen still go to the page.
+- **Fullscreen.** The fullscreen button fills a landscape screen with the
+  shared browser and hides the system bars; back returns to the room.
 - **It keeps running in the background.** The room lives in a foreground
   service with a persistent notification, so switching apps or turning off the
   screen doesn't stall or drop it.
@@ -24,8 +31,9 @@ Not affiliated with Hyperbeam, Inc.
 
 ## Install
 
-Every push builds APKs in GitHub Actions. Open the latest run under
-**Actions → Build**, download the `hyperbeam-…` artifact, and install the APK.
+Every push to the default branch publishes a GitHub release. The latest APK is
+always at
+<https://github.com/MinusGix/unofficial-hyperbeam-mobile/releases/latest/download/hyperbeam.apk>.
 
 ## How it works
 

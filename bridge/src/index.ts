@@ -8,6 +8,7 @@ import { installFocusTracking } from "./focus";
 import { sendBackspace, sendClientMessage, sendKey, sendText } from "./input";
 import { installLocationTracking } from "./location";
 import { installHttpLog, installNetLog } from "./netlog";
+import { installVideoTracking, sendMouse, sendWheel, setTheater } from "./pointer";
 import { BRIDGE_VERSION, type NativeCommand } from "./protocol";
 import { takeSnapshot } from "./snapshot";
 import { installVisibilityPin, setPinned } from "./visibility";
@@ -44,6 +45,15 @@ function handle(cmd: NativeCommand): void {
     case "chatSend":
       send({ type: "chatSent", id: cmd.id, ok: sendChat(cmd.text) });
       break;
+    case "mouse":
+      sendMouse(cmd.action, cmd.x, cmd.y, cmd.button ?? 0);
+      break;
+    case "wheel":
+      sendWheel(cmd.x, cmd.y, cmd.deltaX, cmd.deltaY);
+      break;
+    case "theater":
+      setTheater(cmd.on);
+      break;
     case "snapshot":
       send({ type: "snapshot", id: cmd.id, data: takeSnapshot() });
       break;
@@ -62,6 +72,7 @@ function install(): void {
   if (top) {
     installLocationTracking();
     installChatReader();
+    installVideoTracking();
   }
   onCommand(handle);
   send({ type: "ready", version: BRIDGE_VERSION, top, url: location.href });

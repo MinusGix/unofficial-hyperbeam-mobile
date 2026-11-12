@@ -350,3 +350,50 @@ test("records HTTP API traffic for snapshots", async () => {
   assert.equal(h.sample, '{"room":"x"}');
   await context.close();
 });
+
+// --- pointer ------------------------------------------------------------
+
+test("sends mouse and wheel events, normalised and clamped, to the client", async () => {
+  const { context, page } = await openPage();
+  await connect(page);
+  await page.evaluate(() => {
+    window.__cmd({ type: "mouse", action: "down", x: 0.25, y: 0.5 });
+    window.__cmd({ type: "mouse", action: "move", x: 1.7, y: -1 });
+    window.__cmd({ type: "mouse", action: "up", x: 0.3, y: 0.5, button: 2 });
+    window.__cmd({ type: "wheel", x: 0.5, y: 0.5, deltaX: 0, deltaY: 120 });
+  });
+  assert.deepEqual(await page.evaluate(() => window.__hbEvents), [
+    { type: "mousedown", x: 0.25, y: 0.5, button: 0 },
+    { type: "mousemove", x: 1, y: 0, button: 0 },
+    { type: "mouseup", x: 0.3, y: 0.5, button: 2 },
+    { type: "mousemove", x: 0.5, y: 0.5 },
+    { type: "wheel", deltaX: 0, deltaY: 120 },
+  ]);
+  await context.close();
+});
+
+test("reports where the video sits, and fills the screen in theater mode", async () => {
+  const { context, page } = await openPage();
+  await page.setViewportSize({ width: 400, height: 800 });
+  await page.evaluate(() => {
+    const c = document.getElementById("c");
+    c.style.cssText = "margin-top: 100px; width: 400px; height: 225px";
+  });
+  await connect(page);
+  await page.evaluate(() => {
+    const v = document.getElementById("c").shadowRoot.querySelector("video");
+    v.style.cssText = "display:block; width:100%; height:225px";
+  });
+  await page.waitForFunction(() => window.__native.some((m) => m.type === "videoRect" && m.h > 0));
+  const rect = (await page.evaluate(() => window.__native)).filter((m) => m.type === "videoRect").at(-1);
+  assert.deepEqual([rect.x, rect.y, rect.w, rect.h], [8, 100, 400, 225]); // 8 = default body margin
+
+  await page.evaluate(() => window.__cmd({ type: "theater", on: true }));
+  await page.waitForFunction(() => window.__native.filter((m) => m.type === "videoRect").at(-1).y === 0);
+  const host = await page.evaluate(() => getComputedStyle(document.getElementById("c")).position);
+  assert.equal(host, "fixed");
+
+  await page.evaluate(() => window.__cmd({ type: "theater", on: false }));
+  await page.waitForFunction(() => window.__native.filter((m) => m.type === "videoRect").at(-1).y === 100);
+  await context.close();
+});

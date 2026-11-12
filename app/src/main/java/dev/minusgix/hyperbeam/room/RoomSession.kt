@@ -88,7 +88,7 @@ object RoomSession {
             rememberRoom(u)
             _state.update {
                 val sameRoom = RoomLink.fromUrl(u) == RoomLink.fromUrl(it.url)
-                it.copy(url = u, clientActive = false, connection = null, inputPath = null, chat = if (sameRoom) it.chat else emptyList())
+                it.copy(url = u, clientActive = false, connection = null, inputPath = null, video = null, chat = if (sameRoom) it.chat else emptyList())
             }
         })
         wv.webChromeClient = HbChromeClient(onTitle = { t -> _state.update { it.copy(title = t) } })
@@ -179,7 +179,7 @@ object RoomSession {
         when (ev) {
             is BridgeEvent.Client -> _state.update {
                 when (ev.state) {
-                    "destroyed" -> it.copy(clientActive = false, connection = null)
+                    "destroyed" -> it.copy(clientActive = false, connection = null, video = null)
                     else -> it.copy(
                         clientActive = true,
                         connection = if (ev.state == "connected") "playing" else it.connection ?: "connecting",
@@ -195,6 +195,7 @@ object RoomSession {
                 rememberRoom(ev.url)
                 _state.update { it.copy(url = ev.url, title = ev.title.ifBlank { it.title }) }
             }
+            is BridgeEvent.VideoRect -> _state.update { it.copy(video = ev.takeIf { r -> r.w > 0 && r.h > 0 }) }
             is BridgeEvent.InputPath -> _state.update { it.copy(inputPath = ev.path) }
             is BridgeEvent.Log -> Log.i(TAG, "bridge ${ev.level}: ${ev.msg}")
             is BridgeEvent.Chat -> {

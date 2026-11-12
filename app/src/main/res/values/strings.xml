@@ -11,6 +11,10 @@
     <string name="action_exit">Exit</string>
     <string name="action_mute">Mute</string>
     <string name="action_unmute">Unmute</string>
+    <string name="mouse_toggle">Use your finger as a mouse on the shared screen</string>
+    <string name="mouse_on">Mouse mode: tap to click, drag to select, hold to right click, two fingers to scroll</string>
+    <string name="mouse_no_video">Mouse mode works once the shared browser is showing</string>
+    <string name="fullscreen_toggle">Fullscreen</string>
     <string name="kb_toggle">Type into the shared browser</string>
     <string name="kb_compose_hint">Type, then send to the shared browser</string>
     <string name="kb_send">Send</string>
