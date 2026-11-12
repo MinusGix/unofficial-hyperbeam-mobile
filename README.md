@@ -11,6 +11,12 @@ It runs the real Hyperbeam site and fixes the parts that are rough on a phone:
 - **It keeps running in the background.** The room lives in a foreground
   service with a persistent notification, so switching apps or turning off the
   screen doesn't stall or drop it.
+- **Recent chat in the notification.** The persistent notification shows the
+  room's latest messages in conversation style, with a reply box that posts to
+  the room's chat.
+- **No account needed.** The start screen joins a room by name or link
+  (`/r/<name>`), which only asks for a display name. Recent rooms are kept on
+  the device.
 - **Links open in the app.** Hyperbeam links open here, and sharing a URL from
   another app types it into the shared browser's address bar.
 

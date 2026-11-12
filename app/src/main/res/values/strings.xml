@@ -33,4 +33,7 @@
     <string name="start_bad_room">Enter a room name like movie-night, or paste a room link</string>
     <string name="start_removed">Removed %1$s</string>
     <string name="menu_switch_room">Switch room</string>
+    <string name="action_reply">Reply</string>
+    <string name="action_reply_hint">Message the room</string>
+    <string name="notif_you">You</string>
 </resources>

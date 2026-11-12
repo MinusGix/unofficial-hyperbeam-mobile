@@ -40,6 +40,7 @@ object RoomSession {
     /** The account-based app on [server] (rooms can also be joined without one). */
     fun appUrl(server: String) = "https://$server/app/"
     private const val TAG = "RoomSession"
+    private const val MAX_CHAT = 8
 
     private lateinit var app: Context
     private var contextWrapper: MutableContextWrapper? = null
@@ -85,7 +86,10 @@ object RoomSession {
         wv.webViewClient = HbViewClient(onPageStarted = { u ->
             channel.onPageStarted()
             rememberRoom(u)
-            _state.update { it.copy(url = u, clientActive = false, connection = null, inputPath = null) }
+            _state.update {
+                val sameRoom = RoomLink.fromUrl(u) == RoomLink.fromUrl(it.url)
+                it.copy(url = u, clientActive = false, connection = null, inputPath = null, chat = if (sameRoom) it.chat else emptyList())
+            }
         })
         wv.webChromeClient = HbChromeClient(onTitle = { t -> _state.update { it.copy(title = t) } })
         webView = wv
@@ -156,6 +160,16 @@ object RoomSession {
         _state.value = RoomState()
     }
 
+    private var chatSendId = 0
+
+    /** Send [text] to the room's chat; false if no page is ready to take it. */
+    fun sendChat(text: String): Boolean {
+        val b = bridge ?: return false
+        if (!b.connected) return false
+        b.sendChat(++chatSendId, text)
+        return true
+    }
+
     fun setMuted(muted: Boolean) {
         bridge?.setVolume(if (muted) 0.0 else 1.0)
         _state.update { it.copy(muted = muted) }
@@ -183,6 +197,14 @@ object RoomSession {
             }
             is BridgeEvent.InputPath -> _state.update { it.copy(inputPath = ev.path) }
             is BridgeEvent.Log -> Log.i(TAG, "bridge ${ev.level}: ${ev.msg}")
+            is BridgeEvent.Chat -> {
+                val now = System.currentTimeMillis()
+                val lines = ev.messages.map { ChatLine(it.author, it.text, it.time, now) }
+                _state.update {
+                    val merged = if (ev.initial) lines else it.chat + lines
+                    it.copy(chat = merged.takeLast(MAX_CHAT))
+                }
+            }
             else -> {}
         }
         _events.tryEmit(ev)

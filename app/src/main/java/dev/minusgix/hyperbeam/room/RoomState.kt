@@ -1,6 +1,8 @@
 package dev.minusgix.hyperbeam.room
 
 /** What the app knows about the page and the shared browser, for UI and notifications. */
+data class ChatLine(val author: String, val text: String, val time: String, val receivedAt: Long)
+
 data class RoomState(
     val url: String = "",
     val title: String = "",
@@ -14,15 +16,23 @@ data class RoomState(
     val inputPath: String? = null,
     val muted: Boolean = false,
     val lastDisconnect: String? = null,
+    /** Most recent chat messages in this room, oldest first. */
+    val chat: List<ChatLine> = emptyList(),
 ) {
-    val inRoom: Boolean get() = clientActive
+    /** In a room: the shared browser is running, or the page is a room with chat. */
+    val inRoom: Boolean get() = clientActive || roomName != null
+
+    /** Room name when the page is a /r/<name> room. */
+    val roomName: String?
+        get() = dev.minusgix.hyperbeam.core.RoomLink.fromUrl(url)?.name
 
     val statusText: String
         get() = when {
-            !clientActive -> "Browsing"
+            !inRoom -> "Browsing"
             connection == "reconnecting" -> "Reconnecting…"
             connection == "connecting" -> "Connecting…"
             connection == "failed" -> "Connection lost"
-            else -> "In a room"
+            !clientActive -> "In the room"
+            else -> "Watching"
         }
 }

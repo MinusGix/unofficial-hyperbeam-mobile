@@ -11,6 +11,8 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
+import androidx.core.app.RemoteInput
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
@@ -53,6 +55,12 @@ class RoomService : LifecycleService() {
                 return START_NOT_STICKY
             }
             ACTION_TOGGLE_MUTE -> RoomSession.setMuted(!RoomSession.state.value.muted)
+            ACTION_REPLY -> {
+                val text = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(KEY_REPLY)?.toString()?.trim()
+                if (!text.isNullOrEmpty()) RoomSession.sendChat(text)
+                // Re-post so the reply box stops spinning; the message shows up once the site renders it.
+                updateNotification(RoomSession.state.value)
+            }
         }
         if (!RoomSession.isOpen) {
             // Process came back without a page (e.g. restarted); nothing to keep alive.
@@ -113,11 +121,14 @@ class RoomService : LifecycleService() {
             this, 2, Intent(this, RoomService::class.java).setAction(ACTION_TOGGLE_MUTE),
             PendingIntent.FLAG_IMMUTABLE,
         )
-        val title = st.title.takeIf { it.isNotBlank() && !it.startsWith("http") } ?: getString(R.string.app_name)
+        val title = st.roomName
+            ?: st.title.takeIf { it.isNotBlank() && !it.startsWith("http") }
+            ?: getString(R.string.app_name)
         val b = NotificationCompat.Builder(this, HyperbeamApp.CHANNEL_ROOM)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
-            .setContentText(st.statusText)
+            .setContentText(st.chat.lastOrNull()?.let { "${it.author}: ${it.text}" } ?: st.statusText)
+            .setSubText(st.statusText)
             .setContentIntent(open)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -125,11 +136,47 @@ class RoomService : LifecycleService() {
             .setShowWhen(false)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-        if (st.inRoom) {
+        if (st.chat.isNotEmpty()) {
+            b.setStyle(chatStyle(title, st))
+        }
+        if (st.roomName != null) {
+            val reply = PendingIntent.getService(
+                this, 3, Intent(this, RoomService::class.java).setAction(ACTION_REPLY),
+                // Mutable: the system fills in the typed reply.
+                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val input = RemoteInput.Builder(KEY_REPLY).setLabel(getString(R.string.action_reply_hint)).build()
+            b.addAction(
+                NotificationCompat.Action.Builder(0, getString(R.string.action_reply), reply)
+                    .addRemoteInput(input)
+                    .setAllowGeneratedReplies(false)
+                    .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+                    .setShowsUserInterface(false)
+                    .build(),
+            )
+        }
+        if (st.clientActive) {
             b.addAction(0, getString(if (st.muted) R.string.action_unmute else R.string.action_mute), mute)
         }
         b.addAction(0, getString(R.string.action_exit), exit)
         return b.build()
+    }
+
+    private val people = mutableMapOf<String, Person>()
+
+    private fun person(name: String): Person =
+        people.getOrPut(name) { Person.Builder().setName(name).setKey("hb:$name").build() }
+
+    /** Recent chat as a conversation, newest last, the way messaging apps show it. */
+    private fun chatStyle(title: String, st: RoomState): NotificationCompat.MessagingStyle {
+        val me = Person.Builder().setName(getString(R.string.notif_you)).setKey("hb:self").build()
+        val style = NotificationCompat.MessagingStyle(me)
+            .setConversationTitle(title)
+            .setGroupConversation(true)
+        for (line in st.chat) {
+            style.addMessage(line.text, line.receivedAt, person(line.author))
+        }
+        return style
     }
 
     private fun holdLocks(on: Boolean) {
@@ -168,6 +215,8 @@ class RoomService : LifecycleService() {
         /** Close the page and stop, but keep the app open (back to the start screen). */
         const val ACTION_LEAVE = "dev.minusgix.hyperbeam.LEAVE"
         const val ACTION_TOGGLE_MUTE = "dev.minusgix.hyperbeam.TOGGLE_MUTE"
+        const val ACTION_REPLY = "dev.minusgix.hyperbeam.REPLY"
+        const val KEY_REPLY = "reply"
         const val ACTION_FINISH_UI = "dev.minusgix.hyperbeam.FINISH_UI"
 
         /** Must be called while the app is in the foreground (Android 12+ rule). */

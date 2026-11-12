@@ -2,11 +2,12 @@
 // pages by the native shell.
 
 import { hasNative, log, onCommand, send } from "./channel";
+import { installChatReader, sendChat } from "./chat";
 import { installClientHook } from "./client-hook";
 import { installFocusTracking } from "./focus";
 import { sendBackspace, sendClientMessage, sendKey, sendText } from "./input";
 import { installLocationTracking } from "./location";
-import { installNetLog } from "./netlog";
+import { installHttpLog, installNetLog } from "./netlog";
 import { BRIDGE_VERSION, type NativeCommand } from "./protocol";
 import { takeSnapshot } from "./snapshot";
 import { installVisibilityPin, setPinned } from "./visibility";
@@ -40,6 +41,9 @@ function handle(cmd: NativeCommand): void {
     case "ping":
       sendClientMessage({ type: "ping" });
       break;
+    case "chatSend":
+      send({ type: "chatSent", id: cmd.id, ok: sendChat(cmd.text) });
+      break;
     case "snapshot":
       send({ type: "snapshot", id: cmd.id, data: takeSnapshot() });
       break;
@@ -53,8 +57,12 @@ function install(): void {
   installVisibilityPin();
   installClientHook();
   installNetLog();
+  installHttpLog();
   installFocusTracking();
-  if (top) installLocationTracking();
+  if (top) {
+    installLocationTracking();
+    installChatReader();
+  }
   onCommand(handle);
   send({ type: "ready", version: BRIDGE_VERSION, top, url: location.href });
   if (!hasNative) {

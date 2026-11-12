@@ -2,7 +2,7 @@
 // bridge script running inside the Hyperbeam page. Both directions are JSON
 // strings carried over a WebMessage channel named `HbNative`.
 
-export const BRIDGE_VERSION = 1;
+export const BRIDGE_VERSION = 2;
 
 export type Modifiers = {
   ctrl?: boolean;
@@ -20,6 +20,7 @@ export type NativeCommand =
   | { type: "videoPaused"; on: boolean }
   | { type: "volume"; value: number }
   | { type: "ping" }
+  | { type: "chatSend"; id: number; text: string }
   | { type: "snapshot"; id: number };
 
 export type ClientInfo = {
@@ -39,4 +40,6 @@ export type BridgeEvent =
   | { type: "inputPath"; path: "client" | "synthetic" }
   | { type: "pageFocus"; editable: boolean; inClient: boolean }
   | { type: "snapshot"; id: number; data: unknown }
+  | { type: "chat"; initial: boolean; messages: Array<{ author: string; text: string; time: string }> }
+  | { type: "chatSent"; id: number; ok: boolean }
   | { type: "log"; level: "info" | "warn" | "error"; msg: string };

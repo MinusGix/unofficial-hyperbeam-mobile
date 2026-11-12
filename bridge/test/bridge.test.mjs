@@ -241,3 +241,112 @@ test("reports when the page's own text fields take focus", async () => {
   ]);
   await context.close();
 });
+
+// --- chat ---------------------------------------------------------------
+
+import { first, gif, cont, page as chatPage } from "./chat-fixture.mjs";
+
+async function openRoom(rows) {
+  const { context, page } = await openPage();
+  await page.evaluate((html) => {
+    document.body.insertAdjacentHTML("beforeend", html);
+  }, chatPage(rows));
+  return { context, page };
+}
+
+const chats = (native) => native.filter((m) => m.type === "chat");
+
+test("reports recent chat on load, attributing continuation rows and GIFs", async () => {
+  const rows = [
+    first("ana", "01:30 PM", "anyone here?"),
+    cont("01:31 PM", "hello??"),
+    first("bo", "01:32 PM", "yes  hi\n there"),
+    gif("bo", "01:32 PM"),
+  ].join("");
+  const { context, page } = await openRoom(rows);
+  await page.waitForFunction(() => window.__native.some((m) => m.type === "chat"));
+  const [c] = chats(await page.evaluate(() => window.__native));
+  assert.equal(c.initial, true);
+  assert.deepEqual(c.messages, [
+    { author: "ana", text: "anyone here?", time: "01:30 PM" },
+    { author: "ana", text: "hello??", time: "01:31 PM" },
+    { author: "bo", text: "yes hi there", time: "01:32 PM" },
+    { author: "bo", text: "[GIF]", time: "01:32 PM" },
+  ]);
+  await context.close();
+});
+
+test("reports only new messages afterwards, including exact repeats", async () => {
+  const { context, page } = await openRoom(first("ana", "01:30 PM", "lol"));
+  await page.waitForFunction(() => window.__native.some((m) => m.type === "chat"));
+  await page.evaluate((html) => document.getElementById("list").insertAdjacentHTML("beforeend", html), cont("01:30 PM", "lol") + first("cy", "01:31 PM", "new one"));
+  await page.waitForFunction(() => window.__native.filter((m) => m.type === "chat").length >= 2);
+  const c = chats(await page.evaluate(() => window.__native));
+  assert.deepEqual(c[1], {
+    type: "chat",
+    initial: false,
+    messages: [
+      { author: "ana", text: "lol", time: "01:30 PM" },
+      { author: "cy", text: "new one", time: "01:31 PM" },
+    ],
+  });
+  // Re-rendering the same list (e.g. scrolling) reports nothing new.
+  await page.evaluate(() => {
+    const l = document.getElementById("list");
+    l.innerHTML = l.innerHTML;
+  });
+  await page.waitForTimeout(500);
+  assert.equal(chats(await page.evaluate(() => window.__native)).length, 2);
+  await context.close();
+});
+
+test("sends a chat message through the site's composer", async () => {
+  const { context, page } = await openRoom(first("ana", "01:30 PM", "hi"));
+  await page.evaluate(() => {
+    window.__submitted = [];
+    const box = document.getElementById("message");
+    // Like the site: Enter in the box submits and clears it.
+    box.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        window.__submitted.push(box.value);
+        box.value = "";
+      }
+    });
+    window.__cmd({ type: "chatSend", id: 3, text: "sent from my phone" });
+  });
+  assert.deepEqual(await page.evaluate(() => window.__submitted), ["sent from my phone"]);
+  const sent = (await page.evaluate(() => window.__native)).find((m) => m.type === "chatSent");
+  assert.deepEqual(sent, { type: "chatSent", id: 3, ok: true });
+  await context.close();
+});
+
+test("falls back to submitting the form when Enter doesn't send", async () => {
+  const { context, page } = await openRoom("");
+  await page.evaluate(() => {
+    window.__submitted = [];
+    const form = document.getElementById("composer");
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      window.__submitted.push(new FormData(form).get("message"));
+    });
+    window.__cmd({ type: "chatSend", id: 4, text: "via form" });
+  });
+  assert.deepEqual(await page.evaluate(() => window.__submitted), ["via form"]);
+  await context.close();
+});
+
+test("records HTTP API traffic for snapshots", async () => {
+  const { context, page } = await openPage();
+  await page.route("https://alpha.hyperbeam.com/**", (r) =>
+    r.fulfill({ contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: '{"room":"x"}' }),
+  );
+  await page.evaluate(() => fetch("https://alpha.hyperbeam.com/p/peek/x").then((r) => r.json()));
+  await page.waitForTimeout(100);
+  await page.evaluate(() => window.__cmd({ type: "snapshot", id: 9 }));
+  const snap = (await page.evaluate(() => window.__native)).find((m) => m.type === "snapshot");
+  const h = snap.data.net.http.find((x) => x.url.includes("/p/peek/x"));
+  assert.equal(h.status, 200);
+  assert.equal(h.sample, '{"room":"x"}');
+  await context.close();
+});

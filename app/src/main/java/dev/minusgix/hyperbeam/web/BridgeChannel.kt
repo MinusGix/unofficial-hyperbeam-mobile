@@ -88,6 +88,11 @@ class BridgeChannel(
 
     fun ping() = command("ping")
 
+    fun sendChat(id: Int, text: String) = command("chatSend") {
+        put("id", id)
+        put("text", text)
+    }
+
     fun requestSnapshot(id: Int) = command("snapshot") { put("id", id) }
 
     companion object {

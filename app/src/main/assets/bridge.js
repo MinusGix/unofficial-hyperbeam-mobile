@@ -32,6 +32,114 @@
     };
   }
 
+  // src/chat.ts
+  var ROW = "div.group.relative.my-2";
+  var BODY = ".whitespace-pre-wrap.break-words";
+  var MAX_INITIAL = 8;
+  var MAX_REMEMBERED = 400;
+  var seen = /* @__PURE__ */ new Set();
+  var seenOrder = [];
+  var initialSent = false;
+  function text(el) {
+    return ((el == null ? void 0 : el.textContent) ?? "").replace(/\s+/g, " ").trim();
+  }
+  function mediaLabel(row) {
+    const media = row.querySelectorAll("video[src], img[src]");
+    for (const m of Array.from(media)) {
+      if (m.classList.contains("rounded-full")) continue;
+      const src = m.getAttribute("src") ?? "";
+      if (/tenor\.com|giphy\.com|\.gif(\?|$)/i.test(src)) return "GIF";
+      return m.tagName === "VIDEO" ? "Video" : "Image";
+    }
+    return "";
+  }
+  function readChat(root = document) {
+    const rows = Array.from(root.querySelectorAll(ROW)).filter((r) => r.querySelector(BODY) || mediaLabel(r));
+    const out = [];
+    const counts = /* @__PURE__ */ new Map();
+    let author = "";
+    let time = "";
+    for (const row of rows) {
+      const name = row.querySelector("span.font-medium");
+      if (name) author = text(name);
+      const t = row.querySelector(".line-clamp-1.text-xs") ?? row.querySelector(".absolute.left-4.text-xs");
+      if (t) time = text(t);
+      let body = text(row.querySelector(BODY));
+      const media = mediaLabel(row);
+      if (media) body = body ? `${body} [${media}]` : `[${media}]`;
+      if (!body || !author) continue;
+      const base = `${author}\0${time}\0${body}`;
+      const n = (counts.get(base) ?? 0) + 1;
+      counts.set(base, n);
+      out.push({ key: `${base}\0${n}`, author, text: body, time });
+    }
+    return out;
+  }
+  function remember(key) {
+    seen.add(key);
+    seenOrder.push(key);
+    if (seenOrder.length > MAX_REMEMBERED) seen.delete(seenOrder.shift());
+  }
+  function scanChat() {
+    const all = readChat();
+    if (all.length === 0) return;
+    if (!initialSent) {
+      initialSent = true;
+      for (const m of all) remember(m.key);
+      const recent = all.slice(-MAX_INITIAL);
+      send({ type: "chat", initial: true, messages: recent.map(strip) });
+      return;
+    }
+    const fresh = all.filter((m) => !seen.has(m.key));
+    if (fresh.length === 0) return;
+    for (const m of fresh) remember(m.key);
+    send({ type: "chat", initial: false, messages: fresh.map(strip) });
+  }
+  function strip(m) {
+    return { author: m.author, text: m.text, time: m.time };
+  }
+  function installChatReader() {
+    let timer;
+    const schedule = () => {
+      if (timer !== void 0) return;
+      timer = window.setTimeout(() => {
+        timer = void 0;
+        try {
+          scanChat();
+        } catch {
+        }
+      }, 250);
+    };
+    const start = () => {
+      new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true, characterData: true });
+      schedule();
+    };
+    if (document.body) start();
+    else document.addEventListener("DOMContentLoaded", start, { once: true });
+  }
+  function sendChat(message) {
+    var _a;
+    const box = document.querySelector("textarea#message, textarea[name=message]");
+    if (!box) return false;
+    const setter = (_a = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")) == null ? void 0 : _a.set;
+    box.focus();
+    setter ? setter.call(box, message) : box.value = message;
+    box.dispatchEvent(new InputEvent("input", { bubbles: true, data: message, inputType: "insertText" }));
+    const enter = { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true };
+    box.dispatchEvent(new KeyboardEvent("keydown", enter));
+    box.dispatchEvent(new KeyboardEvent("keypress", enter));
+    box.dispatchEvent(new KeyboardEvent("keyup", enter));
+    if (box.value === message) {
+      const form = box.closest("form");
+      if (form) {
+        if (typeof form.requestSubmit === "function") form.requestSubmit();
+        else form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      }
+    }
+    box.blur();
+    return true;
+  }
+
   // src/client-hook.ts
   var current = null;
   var listeners = [];
@@ -254,9 +362,9 @@ export default function (...a) { return globalThis.__hbBridgeWrap(m.default, a);
         return ch;
     }
   }
-  function sendText(text) {
+  function sendText(text2) {
     let prevCR = false;
-    for (const ch of text) {
+    for (const ch of text2) {
       if (ch === "\n" && prevCR) {
         prevCR = false;
         continue;
@@ -351,12 +459,109 @@ export default function (...a) { return globalThis.__hbBridgeWrap(m.default, a);
     }
     window.WebSocket = TappedWebSocket;
   }
+  var MAX_HTTP = 200;
+  var MAX_BODY = 4e3;
+  var http = [];
+  function pushHttp(h) {
+    http.push(h);
+    if (http.length > MAX_HTTP) http.splice(0, http.length - MAX_HTTP);
+    return h;
+  }
+  function interesting(url) {
+    return !/\.(woff2?|png|jpe?g|svg|gif|webp|mp4|webm|opus|css|ico)(\?|$)/i.test(url);
+  }
+  async function sampleBody(res, h) {
+    const body = res.body;
+    if (!body) return;
+    const reader = body.getReader();
+    const dec = new TextDecoder();
+    let text2 = "";
+    let bytes = 0;
+    const started = Date.now();
+    try {
+      while (text2.length < MAX_BODY && Date.now() - started < 15e3) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        text2 += dec.decode(value, { stream: true });
+        h.sample = text2.slice(0, MAX_BODY);
+        h.bytes = bytes;
+      }
+    } catch {
+    } finally {
+      reader.cancel().catch(() => {
+      });
+    }
+  }
+  function installHttpLog() {
+    const origFetch = window.fetch;
+    window.fetch = async function(...a) {
+      var _a;
+      const started = Date.now();
+      const req = a[0];
+      const url = typeof req === "string" ? req : req instanceof URL ? req.href : req.url;
+      const method = (((_a = a[1]) == null ? void 0 : _a.method) ?? (req instanceof Request ? req.method : "GET")).toUpperCase();
+      const res = await origFetch.apply(this, a);
+      try {
+        if (interesting(url)) {
+          const h = pushHttp({
+            t: started,
+            via: "fetch",
+            method,
+            url: res.url || url,
+            status: res.status,
+            contentType: res.headers.get("content-type") ?? void 0,
+            ms: Date.now() - started
+          });
+          const ct = h.contentType ?? "";
+          if (!/javascript|octet-stream|image|video|audio|font/.test(ct)) {
+            sampleBody(res.clone(), h);
+          }
+        }
+      } catch {
+      }
+      return res;
+    };
+    const xo = XMLHttpRequest.prototype.open;
+    const xs = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+      this.__hb = { t: Date.now(), via: "xhr", method: String(method).toUpperCase(), url: String(url) };
+      return xo.call(this, method, url, ...rest);
+    };
+    XMLHttpRequest.prototype.send = function(body) {
+      const h = this.__hb;
+      if (h && interesting(h.url)) {
+        pushHttp(h);
+        this.addEventListener("loadend", () => {
+          h.status = this.status;
+          h.contentType = this.getResponseHeader("content-type") ?? void 0;
+          h.ms = Date.now() - h.t;
+          if (this.responseType === "" || this.responseType === "text") h.sample = this.responseText.slice(0, MAX_BODY);
+        });
+      }
+      return xs.call(this, body);
+    };
+    const OrigES = window.EventSource;
+    if (OrigES) {
+      class TappedEventSource extends OrigES {
+        constructor(url, init) {
+          super(url, init);
+          const h = pushHttp({ t: Date.now(), via: "eventsource", method: "GET", url: String(url), sample: "" });
+          this.addEventListener("message", (e) => {
+            if ((h.sample ?? "").length < MAX_BODY) h.sample += `${String(e.data).slice(0, 500)}
+`;
+          });
+        }
+      }
+      window.EventSource = TappedEventSource;
+    }
+  }
   function netLogSnapshot() {
-    return { sockets: sockets.slice(), frames: frames.slice() };
+    return { sockets: sockets.slice(), frames: frames.slice(), http: http.slice() };
   }
 
   // src/protocol.ts
-  var BRIDGE_VERSION = 1;
+  var BRIDGE_VERSION = 2;
 
   // src/visibility.ts
   var pinned = true;
@@ -485,6 +690,9 @@ export default function (...a) { return globalThis.__hbBridgeWrap(m.default, a);
       case "ping":
         sendClientMessage({ type: "ping" });
         break;
+      case "chatSend":
+        send({ type: "chatSent", id: cmd.id, ok: sendChat(cmd.text) });
+        break;
       case "snapshot":
         send({ type: "snapshot", id: cmd.id, data: takeSnapshot() });
         break;
@@ -497,8 +705,12 @@ export default function (...a) { return globalThis.__hbBridgeWrap(m.default, a);
     installVisibilityPin();
     installClientHook();
     installNetLog();
+    installHttpLog();
     installFocusTracking();
-    if (top) installLocationTracking();
+    if (top) {
+      installLocationTracking();
+      installChatReader();
+    }
     onCommand(handle);
     send({ type: "ready", version: BRIDGE_VERSION, top, url: location.href });
     if (!hasNative) {
