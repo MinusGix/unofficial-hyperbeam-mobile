@@ -8,6 +8,7 @@ import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import dev.minusgix.hyperbeam.core.RoomLink
 import dev.minusgix.hyperbeam.input.Mods
 import dev.minusgix.hyperbeam.input.RemoteKeySink
 import org.json.JSONObject
@@ -48,8 +49,8 @@ class BridgeChannel(
     }
 
     private fun isAllowed(origin: Uri): Boolean {
-        val host = origin.host ?: return false
-        return origin.scheme == "https" && (host == "hyperbeam.com" || host.endsWith(".hyperbeam.com"))
+        val host = origin.host?.lowercase() ?: return false
+        return origin.scheme == "https" && RoomLink.isHyperbeamHost(host)
     }
 
     fun command(type: String, build: JSONObject.() -> Unit = {}) {

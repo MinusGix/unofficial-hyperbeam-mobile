@@ -45,7 +45,11 @@ class RoomService : LifecycleService() {
         super.onStartCommand(intent, flags, startId)
         when (intent?.action) {
             ACTION_EXIT -> {
-                exitEverything()
+                exitEverything(finishUi = true)
+                return START_NOT_STICKY
+            }
+            ACTION_LEAVE -> {
+                exitEverything(finishUi = false)
                 return START_NOT_STICKY
             }
             ACTION_TOGGLE_MUTE -> RoomSession.setMuted(!RoomSession.state.value.muted)
@@ -64,7 +68,7 @@ class RoomService : LifecycleService() {
 
     /** Swiping the app away from recents means "I'm done". */
     override fun onTaskRemoved(rootIntent: Intent?) {
-        exitEverything()
+        exitEverything(finishUi = true)
         super.onTaskRemoved(rootIntent)
     }
 
@@ -73,12 +77,12 @@ class RoomService : LifecycleService() {
         super.onDestroy()
     }
 
-    private fun exitEverything() {
+    private fun exitEverything(finishUi: Boolean) {
         RoomSession.close()
         holdLocks(false)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
-        sendBroadcast(Intent(ACTION_FINISH_UI).setPackage(packageName))
+        if (finishUi) sendBroadcast(Intent(ACTION_FINISH_UI).setPackage(packageName))
     }
 
     private fun startInForeground(st: RoomState) {
@@ -161,6 +165,8 @@ class RoomService : LifecycleService() {
     companion object {
         const val NOTIFICATION_ID = 1
         const val ACTION_EXIT = "dev.minusgix.hyperbeam.EXIT"
+        /** Close the page and stop, but keep the app open (back to the start screen). */
+        const val ACTION_LEAVE = "dev.minusgix.hyperbeam.LEAVE"
         const val ACTION_TOGGLE_MUTE = "dev.minusgix.hyperbeam.TOGGLE_MUTE"
         const val ACTION_FINISH_UI = "dev.minusgix.hyperbeam.FINISH_UI"
 

@@ -49,6 +49,7 @@
                 <data android:scheme="https" />
                 <data android:host="hyperbeam.com" />
                 <data android:host="watch.hyperbeam.com" />
+                <data android:host="canary.hyperbeam.com" />
             </intent-filter>
             <!-- Share a link from another app into the room's browser. -->
             <intent-filter>

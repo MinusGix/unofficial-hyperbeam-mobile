@@ -40,6 +40,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import dev.minusgix.hyperbeam.R
+import dev.minusgix.hyperbeam.core.RoomLink
+import dev.minusgix.hyperbeam.room.RecentRooms
 import dev.minusgix.hyperbeam.input.Mods
 import dev.minusgix.hyperbeam.input.RemoteKeySink
 import dev.minusgix.hyperbeam.room.PageHost
@@ -111,18 +113,25 @@ class MainActivity : AppCompatActivity(), PageHost {
         fabKeyboard.setOnClickListener { setKbMode(if (kbMode == KbMode.OFF) KbMode.TYPING else KbMode.OFF) }
         findViewById<ImageButton>(R.id.fab_menu).setOnClickListener { showMenu(it) }
 
+        setupStartPanel()
         RoomSession.host = this
         val wasOpen = RoomSession.isOpen
-        RoomSession.open(if (wasOpen) null else urlFromIntent(intent))
-        if (wasOpen) handleIncoming(intent)
-        attachWebView()
-        RoomService.start(this)
+        val link = urlFromIntent(intent)
+        when {
+            wasOpen -> {
+                attachWebView()
+                handleIncoming(intent)
+            }
+            link != null -> openPage(link)
+            else -> showStartPanel()
+        }
         maybeAskForNotifications()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 val wv = RoomSession.webView
                 when {
+                    startPanel.visibility == View.VISIBLE -> finish()
                     kbMode != KbMode.OFF -> setKbMode(KbMode.OFF)
                     wv != null && wv.canGoBack() -> wv.goBack()
                     // Keep the room running; the notification brings you back.
@@ -135,7 +144,7 @@ class MainActivity : AppCompatActivity(), PageHost {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { RoomSession.events.collect(::onBridgeEvent) }
                 launch {
-                    RoomSession.viewVersion.collect { attachWebView() }
+                    RoomSession.viewVersion.collect { if (RoomSession.isOpen) attachWebView() }
                 }
             }
         }
@@ -159,6 +168,15 @@ class MainActivity : AppCompatActivity(), PageHost {
         super.onDestroy()
     }
 
+    /** Open (or navigate) the page and keep it alive in the background. */
+    private fun openPage(url: String) {
+        RoomSession.open(url)
+        attachWebView()
+        startPanel.visibility = View.GONE
+        fabs.visibility = View.VISIBLE
+        RoomService.start(this)
+    }
+
     private fun attachWebView() {
         val wv = RoomSession.webView ?: return
         if (wv.parent === webContainer) return
@@ -177,7 +195,7 @@ class MainActivity : AppCompatActivity(), PageHost {
     private fun handleIncoming(intent: Intent?) {
         intent ?: return
         when (intent.action) {
-            Intent.ACTION_VIEW -> urlFromIntent(intent)?.let { RoomSession.open(it) }
+            Intent.ACTION_VIEW -> urlFromIntent(intent)?.let { openPage(it) }
             Intent.ACTION_SEND -> {
                 val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
                 val url = URL_RE.find(text)?.value ?: return
@@ -346,11 +364,97 @@ class MainActivity : AppCompatActivity(), PageHost {
         }
     }
 
+    // --- Start screen ----------------------------------------------------
+
+    private val startPanel: View by lazy { findViewById(R.id.start_panel) }
+    private val roomInput: EditText by lazy { findViewById(R.id.room_input) }
+
+    private fun setupStartPanel() {
+        val group = findViewById<android.widget.RadioGroup>(R.id.server_group)
+        group.check(
+            if (prefs.getString(PREF_SERVER, RoomLink.CANARY) == RoomLink.MAIN) R.id.server_main else R.id.server_canary,
+        )
+        group.setOnCheckedChangeListener { _, id ->
+            prefs.edit().putString(PREF_SERVER, if (id == R.id.server_main) RoomLink.MAIN else RoomLink.CANARY).apply()
+        }
+        findViewById<Button>(R.id.join_button).setOnClickListener { joinFromInput() }
+        roomInput.setOnEditorActionListener { _, _, _ ->
+            joinFromInput()
+            true
+        }
+        findViewById<View>(R.id.sign_in).setOnClickListener { openPage(RoomSession.appUrl(selectedServer())) }
+    }
+
+    private fun selectedServer(): String = prefs.getString(PREF_SERVER, RoomLink.CANARY) ?: RoomLink.CANARY
+
+    private fun joinFromInput() {
+        val link = RoomLink.parse(roomInput.text.toString(), selectedServer())
+        if (link == null) {
+            Toast.makeText(this, R.string.start_bad_room, Toast.LENGTH_LONG).show()
+            return
+        }
+        hideIme(roomInput)
+        openPage(link.url)
+    }
+
+    private fun showStartPanel() {
+        startPanel.visibility = View.VISIBLE
+        fabs.visibility = View.GONE
+        keyboardBar.visibility = View.GONE
+        kbMode = KbMode.OFF
+        renderRecentRooms()
+    }
+
+    private fun renderRecentRooms() {
+        val list = findViewById<LinearLayout>(R.id.recent_list)
+        list.removeAllViews()
+        val rooms = RecentRooms.list(this)
+        findViewById<View>(R.id.recent_header).visibility = if (rooms.isEmpty()) View.GONE else View.VISIBLE
+        for (entry in rooms) {
+            val link = entry.link
+            val row = TextView(this).apply {
+                val server = if (link.server == RoomLink.MAIN) "" else "  ·  ${link.server.removeSuffix(".hyperbeam.com")}"
+                text = "${link.name}$server"
+                setTextColor(ContextCompat.getColor(context, R.color.hb_text))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+                gravity = Gravity.CENTER_VERTICAL
+                minHeight = dp(48)
+                setPadding(dp(14), 0, dp(14), 0)
+                setBackgroundResource(R.drawable.key_bg)
+                setOnClickListener { openPage(link.url) }
+                setOnLongClickListener {
+                    RecentRooms.remove(context, link)
+                    Toast.makeText(context, getString(R.string.start_removed, link.name), Toast.LENGTH_SHORT).show()
+                    renderRecentRooms()
+                    true
+                }
+            }
+            list.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(8)
+            })
+        }
+    }
+
+    /** Close the current page and go back to the start screen. */
+    private fun leaveToStart() {
+        setKbMode(KbMode.OFF)
+        RoomSession.close()
+        startService(Intent(this, RoomService::class.java).setAction(RoomService.ACTION_LEAVE))
+        roomInput.text.clear()
+        showStartPanel()
+    }
+
+    private fun hideIme(v: View) {
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.hideSoftInputFromWindow(v.windowToken, 0)
+    }
+
     // --- Menu ------------------------------------------------------------
 
     private fun showMenu(anchor: View) {
         val smart = prefs.getBoolean(PREF_SMART_KEYBOARD, true)
         val menu = PopupMenu(this, anchor)
+        menu.menu.add(0, 6, 0, R.string.menu_switch_room)
         menu.menu.add(0, 1, 0, R.string.menu_reload)
         menu.menu.add(0, 2, 1, if (smart) R.string.menu_keyboard_mode_direct else R.string.menu_keyboard_mode_smart)
         menu.menu.add(0, 3, 2, R.string.menu_snapshot)
@@ -366,6 +470,7 @@ class MainActivity : AppCompatActivity(), PageHost {
                 3 -> requestSnapshot()
                 4 -> requestBatteryExemption()
                 5 -> startService(Intent(this, RoomService::class.java).setAction(RoomService.ACTION_EXIT))
+                6 -> leaveToStart()
             }
             true
         }
@@ -467,6 +572,7 @@ class MainActivity : AppCompatActivity(), PageHost {
 
     companion object {
         private const val PREF_SMART_KEYBOARD = "smart_keyboard"
+        private const val PREF_SERVER = "server"
         private val URL_RE = Regex("""https?://\S+""")
     }
 }

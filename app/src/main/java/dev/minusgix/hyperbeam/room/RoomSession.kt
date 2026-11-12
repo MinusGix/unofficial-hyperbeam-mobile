@@ -12,6 +12,7 @@ import android.webkit.CookieManager
 import android.webkit.WebSettings
 import android.webkit.WebView
 import dev.minusgix.hyperbeam.BuildConfig
+import dev.minusgix.hyperbeam.core.RoomLink
 import dev.minusgix.hyperbeam.web.BridgeChannel
 import dev.minusgix.hyperbeam.web.BridgeEvent
 import dev.minusgix.hyperbeam.web.HbChromeClient
@@ -35,6 +36,9 @@ import kotlinx.coroutines.flow.update
 @SuppressLint("StaticFieldLeak") // Holds only the application context when no activity is attached.
 object RoomSession {
     const val HOME_URL = "https://hyperbeam.com/app/"
+
+    /** The account-based app on [server] (rooms can also be joined without one). */
+    fun appUrl(server: String) = "https://$server/app/"
     private const val TAG = "RoomSession"
 
     private lateinit var app: Context
@@ -80,6 +84,7 @@ object RoomSession {
         wv.sink = channel
         wv.webViewClient = HbViewClient(onPageStarted = { u ->
             channel.onPageStarted()
+            rememberRoom(u)
             _state.update { it.copy(url = u, clientActive = false, connection = null, inputPath = null) }
         })
         wv.webChromeClient = HbChromeClient(onTitle = { t -> _state.update { it.copy(title = t) } })
@@ -172,7 +177,10 @@ object RoomSession {
             is BridgeEvent.Connection -> _state.update { it.copy(connection = ev.state) }
             is BridgeEvent.Disconnect -> _state.update { it.copy(lastDisconnect = ev.reason, connection = "failed") }
             is BridgeEvent.Resize -> _state.update { it.copy(remoteWidth = ev.width, remoteHeight = ev.height) }
-            is BridgeEvent.Location -> _state.update { it.copy(url = ev.url, title = ev.title.ifBlank { it.title }) }
+            is BridgeEvent.Location -> {
+                rememberRoom(ev.url)
+                _state.update { it.copy(url = ev.url, title = ev.title.ifBlank { it.title }) }
+            }
             is BridgeEvent.InputPath -> _state.update { it.copy(inputPath = ev.path) }
             is BridgeEvent.Log -> Log.i(TAG, "bridge ${ev.level}: ${ev.msg}")
             else -> {}
@@ -180,10 +188,14 @@ object RoomSession {
         _events.tryEmit(ev)
     }
 
+    private fun rememberRoom(url: String) {
+        RoomLink.fromUrl(url)?.let { RecentRooms.record(app, it) }
+    }
+
     /** True for URLs that belong in the room WebView rather than an external browser. */
     fun isHyperbeamUrl(uri: Uri): Boolean {
-        val host = uri.host ?: return false
-        return uri.scheme == "https" && (host == "hyperbeam.com" || host.endsWith(".hyperbeam.com"))
+        val host = uri.host?.lowercase() ?: return false
+        return uri.scheme == "https" && RoomLink.isHyperbeamHost(host)
     }
 
     /**
